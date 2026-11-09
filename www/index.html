@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B0614">
+<title>FitQuest</title>
+<style>
+:root{--ac:#22D3EE;--bg:#0B0614;--card:#1B0F33;--line:#3B1F6E;--mut:#A78BFA;--txt:#F5F3FF}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:84px}
+#app{max-width:480px;margin:0 auto;padding:16px}
+h1,h2,h3{margin:0 0 10px;font-weight:600}
+h2{font-size:20px}
+.sub{font-size:13px;color:var(--mut)}
+.card{background:var(--card);border-left:4px solid var(--c,var(--ac));padding:12px 14px;margin:10px 0;border-radius:4px}
+.card.tap{cursor:pointer}
+.big{text-align:center;border-left:0;border:1px solid var(--line);border-radius:14px;padding:18px}
+.time{font-size:52px;font-weight:600;color:#FACC15;font-variant-numeric:tabular-nums}
+.bar{height:9px;background:#2A1650;border-radius:5px;margin:8px 0;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--c,var(--ac));border-radius:5px}
+.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.btn{flex:1;min-width:110px;background:#FACC15;color:#422006;border:0;border-radius:10px;padding:13px;font-size:15px;font-weight:600}
+.btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
+.chip{background:transparent;color:var(--txt);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:14px}
+.chip.on{background:var(--ac);color:#04212a;border-color:var(--ac)}
+.lvl{background:#FACC15;color:#422006;font-weight:600;font-size:13px;padding:5px 12px;border-radius:7px}
+.head{display:flex;justify-content:space-between;align-items:center}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+input,textarea{width:100%;background:#12082a;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:11px;font-size:16px}
+textarea{min-height:80px;font-family:inherit}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+nav{position:fixed;bottom:0;left:0;right:0;background:#12082a;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
+nav button{background:none;border:0;color:var(--mut);font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 8px}
+nav button span{font-size:20px}
+nav button.on{color:var(--ac)}
+.sw{display:flex;gap:10px;margin-top:6px}
+.sw b{width:34px;height:34px;border-radius:50%;border:3px solid transparent;display:block}
+.sw b.on{border-color:#fff}
+#toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--ac);color:#04212a;font-weight:600;padding:10px 18px;border-radius:10px;z-index:30;display:none}
+#overlay:not(:empty){position:fixed;inset:0;background:rgba(11,6,20,.96);z-index:20;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}
+#overlay h1{font-size:30px;color:#FACC15}
+.ok{color:#4ADE80}
+.warn{background:#2a1a05;border:1px solid #F59E0B;border-radius:8px;padding:10px;font-size:13px;color:#FCD34D;margin:10px 0}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<div id="overlay"></div>
+<script>
+const KEY='fitquest_v1';
+const $=s=>document.querySelector(s);
+const pad=n=>String(n).padStart(2,'0');
+const todayStr=()=>new Date().toLocaleDateString('en-CA');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const defSet=()=>({waterGoal:3000,waterStep:250,waterEvery:60,exMin:60,studyHr:2,wake:'06:00',sleep:'22:30',accent:'#22D3EE',sound:true,bonus:'Stretch 5 min | 5\nPlank 2 min | 10\nWalk 10 min | 10'});
+const newDay=()=>({date:todayStr(),exSec:0,stSec:0,water:0,bonus:[],exXp:false,stXp:false,wtXp:false,woke:false,slept:false});
+const fresh=()=>({v:1,profile:null,set:defSet(),xp:0,level:1,streak:0,day:newDay(),t:{ex:null,st:null},fired:{},nextWater:0,view:'home'});
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.v===1){s.set=Object.assign(defSet(),s.set);return s}}catch(e){}return fresh()}
+let S=load();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const need=l=>100+(l-1)*50;
+const TITLES=['Rookie','Fighter','Warrior','Knight','Champion','Legend'];
+const title=()=>TITLES[Math.min(Math.floor((S.level-1)/2),5)];
+const fmt=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return(h?h+':'+pad(m):pad(m))+':'+pad(s%60)};
+const bar=(p,c)=>`<div class="bar" style="--c:${c||'var(--ac)'}"><i style="width:${Math.max(0,Math.min(100,p))}%"></i></div>`;
+const secs=k=>S.t[k]?Math.floor((Date.now()-S.t[k])/1000):0;
+const exTotal=()=>S.day.exSec+secs('ex');
+const stTotal=()=>S.day.stSec+secs('st');
+
+function applyAccent(){document.documentElement.style.setProperty('--ac',S.set.accent)}
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',2200)}
+function addXP(n){S.xp+=n;let up=false;while(S.xp>=need(S.level)){S.xp-=need(S.level);S.level++;up=true}save();toast('+'+n+' XP');if(up)ring('LEVEL UP!','You reached Level '+S.level+' · '+title(),'Awesome',null,false)}
+
+let actx=null,beepH=null;
+function beep(){if(!S.set.sound)return;try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.value=.25;o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+.25)}catch(e){}}
+function notify(t,b){try{if('Notification'in window&&Notification.permission==='granted')new Notification(t,{body:b})}catch(e){}}
+function ring(t,msg,okLabel,okFn,loop){
+  $('#overlay').innerHTML=`<div><div style="font-size:56px">⏰</div><h1>${esc(t)}</h1><p class="sub" style="font-size:16px">${esc(msg)}</p><div class="row"><button class="btn" data-a="ringok">${esc(okLabel)}</button><button class="btn ghost" data-a="ringclose">Close</button></div></div>`;
+  ring.fn=okFn;clearInterval(beepH);beep();if(loop!==false)beepH=setInterval(beep,900);
+  try{navigator.vibrate&&navigator.vibrate(loop===false?[200]:[400,200,400,200,400])}catch(e){}
+}
+function closeRing(){clearInterval(beepH);$('#overlay').innerHTML=''}
+
+function rollover(){if(S.day.date!==todayStr()){if(!S.day.exXp)S.streak=0;S.day=newDay();S.fired={};S.t={ex:null,st:null};save();render()}}
+function bank(k){if(S.t[k]){S.day[k+'Sec']+=secs(k);S.t[k]=null}}
+function checkDone(){
+  if(!S.day.exXp&&exTotal()>=S.set.exMin*60){bank('ex');S.day.exXp=true;S.streak++;save();addXP(30);render()}
+  if(!S.day.stXp&&stTotal()>=S.set.studyHr*3600){bank('st');S.day.stXp=true;save();addXP(30);render()}
+}
+function logWater(ml){
+  S.day.water=Math.max(0,S.day.water+ml);
+  if(ml>0)addXP(2);
+  if(!S.day.wtXp&&S.day.water>=S.set.waterGoal){S.day.wtXp=true;save();addXP(20)}
+  save();render()
+}
+function alarms(){
+  const n=new Date(),nm=n.getHours()*60+n.getMinutes(),hm=pad(n.getHours())+':'+pad(n.getMinutes());
+  const mins=t=>{const[a,b]=t.split(':').map(Number);return a*60+b};
+  const due=t=>{const d=nm-mins(t);return d>=0&&d<=5};
+  if(due(S.set.wake)&&!S.fired.wake){S.fired.wake=1;save();notify('Wake up!','New day, new quest');ring('Wake up!','Time to start your day, '+S.profile.name,"I'm up",()=>{if(!S.day.woke){S.day.woke=true;addXP(10)}render()})}
+  if(due(S.set.sleep)&&!S.fired.sleep){S.fired.sleep=1;save();notify('Sleep time','Wind down now');ring('Sleep time','Put the phone down and rest','Going to sleep',()=>{if(!S.day.slept){S.day.slept=true;addXP(10)}render()})}
+  if(!S.nextWater)S.nextWater=Date.now()+S.set.waterEvery*60000;
+  if(Date.now()>=S.nextWater){
+    S.nextWater=Date.now()+S.set.waterEvery*60000;save();
+    if(hm>=S.set.wake&&hm<S.set.sleep&&!$('#overlay').innerHTML){notify('Drink water','Have '+S.set.waterStep+' ml');toast('Drink water: '+S.set.waterStep+' ml');beep();try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
+  }
+}
+function tick(){if(!S.profile)return;rollover();checkDone();alarms();
+  const g=S.set.exMin*60,e=$('#exT');if(e){e.textContent=fmt(g-exTotal());const b=$('#exB');if(b)b.style.width=Math.min(100,exTotal()/g*100)+'%'}
+  const sg=S.set.studyHr*3600,s=$('#stT');if(s){s.textContent=fmt(stTotal());const b=$('#stB');if(b)b.style.width=Math.min(100,stTotal()/sg*100)+'%'}}
+
+const NAV=[['home','🏠','Home'],['exercise','💪','Workout'],['water','💧','Water'],['study','📚','Study'],['settings','⚙️','Settings']];
+function bonuses(){return S.set.bonus.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const[a,b]=l.split('|');return{n:(a||'').trim(),x:parseInt(b)||5}})}
+
+function vLogin(){return `<h1 style="font-size:30px;margin-top:20px">FitQuest</h1><p class="sub">Level up your daily routine. Details stay on this phone.</p>
+<label>Name</label><input data-p="name" placeholder="Arun">
+<div class="g2"><div><label>Age</label><input data-p="age" type="number" inputmode="numeric"></div><div><label>Height (cm)</label><input data-p="height" type="number" inputmode="numeric"></div></div>
+<div class="g2"><div><label>Weight (kg)</label><input data-p="weight" type="number" inputmode="numeric"></div><div><label>Study time (hr/day)</label><input data-p="study" type="number" inputmode="decimal" value="2"></div></div>
+<div class="row"><button class="btn" data-a="login">Start game</button></div>`}
+
+function vHome(){const d=S.day,s=S.set;
+  return `<div class="head"><div><div class="sub">PLAYER</div><h2 style="margin:0">${esc(S.profile.name)}</h2><div class="sub" style="color:var(--ac)">${title()} · 🔥 ${S.streak} day streak</div></div><div class="lvl">LVL ${S.level}</div></div>
+  <div class="sub" style="display:flex;justify-content:space-between;margin-top:12px"><span>XP</span><span>${S.xp}/${need(S.level)}</span></div>${bar(S.xp/need(S.level)*100)}
+  <div class="sub" style="margin-top:14px">TODAY'S QUESTS</div>
+  <div class="card tap" style="--c:#F97316" data-a="go" data-v="exercise"><b>💪 Workout</b> ${d.exXp?'<span class="ok">done</span>':''}<div class="sub">${Math.floor(exTotal()/60)}/${s.exMin} min · +30 XP</div>${bar(exTotal()/(s.exMin*60)*100,'#F97316')}</div>
+  <div class="card tap" style="--c:#22D3EE" data-a="go" data-v="water"><b>💧 Water</b> ${d.wtXp?'<span class="ok">done</span>':''}<div class="sub">${d.water}/${s.waterGoal} ml · +20 XP</div>${bar(d.water/s.waterGoal*100,'#22D3EE')}</div>
+  <div class="card tap" style="--c:#A78BFA" data-a="go" data-v="study"><b>📚 Study</b> ${d.stXp?'<span class="ok">done</span>':''}<div class="sub">${Math.floor(stTotal()/60)}/${Math.round(s.studyHr*60)} min · +30 XP</div>${bar(stTotal()/(s.studyHr*3600)*100,'#A78BFA')}</div>
+  <div class="card" style="--c:#F472B6"><b>⏰ Alarms</b><div class="sub">Wake ${s.wake} ${d.woke?'<span class="ok">✓</span>':''} · Sleep ${s.sleep} ${d.slept?'<span class="ok">✓</span>':''}</div></div>
+  <div class="row"><button class="btn" data-a="water" data-v="${s.waterStep}">Log water +${s.waterStep} ml</button></div>`}
+
+function vExercise(){const g=S.set.exMin*60,t=exTotal(),done=S.day.exXp;
+  let b='';if(done){b='<div class="sub" style="margin-top:16px">BONUS QUESTS (optional)</div>'+bonuses().map((x,i)=>{const c=S.day.bonus.includes(i);return `<div class="card" style="--c:${c?'#4ADE80':'#22D3EE'}"><div class="head"><div><b>${esc(x.n)}</b><div class="sub">+${x.x} XP</div></div><button class="chip ${c?'on':''}" data-a="bonus" data-i="${i}">${c?'Done ✓':'Done?'}</button></div></div>`}).join('')}
+  return `<h2>Workout quest</h2><div class="card big"><div class="time" id="exT">${fmt(g-t)}</div><div class="sub">${S.set.exMin} min goal · ${done?'Main quest complete +30 XP':'time left'}</div>
+  <div class="bar" style="--c:#F97316"><i id="exB" style="width:${Math.min(100,t/g*100)}%"></i></div>
+  <div class="row"><button class="btn" data-a="timer" data-k="ex">${S.t.ex?'Pause':(t>0?'Resume':'Start')}</button><button class="btn ghost" data-a="exfinish">Mark done</button></div>
+  <div class="row" style="justify-content:center"><button class="chip ${S.set.exMin==30?'on':''}" data-a="exmin" data-v="30">30 min</button><button class="chip ${S.set.exMin==60?'on':''}" data-a="exmin" data-v="60">1 hr</button></div></div>${b}`}
+
+function vWater(){const d=S.day,s=S.set;
+  return `<h2>Water quest</h2><div class="card big"><div class="time" style="color:#22D3EE">${d.water}<span style="font-size:20px"> / ${s.waterGoal} ml</span></div>${bar(d.water/s.waterGoal*100,'#22D3EE')}<div class="sub">Reminder every ${s.waterEvery} min while you're awake</div>
+  <div class="row"><button class="btn" data-a="water" data-v="${s.waterStep}">+${s.waterStep} ml</button><button class="btn ghost" data-a="water" data-v="-${s.waterStep}">Undo</button></div>
+  <label>Custom amount (ml)</label><div class="row" style="margin-top:0"><input id="wc" type="number" inputmode="numeric" placeholder="330" style="flex:2"><button class="btn" data-a="watercustom">Add</button></div></div>`}
+
+function vStudy(){const sg=S.set.studyHr*3600,t=stTotal();
+  return `<h2>Study quest</h2><div class="card big"><div class="time" id="stT" style="color:#A78BFA">${fmt(t)}</div><div class="sub">Goal ${S.set.studyHr} hr · ${S.day.stXp?'Quest complete +30 XP':'timer counts up'}</div>
+  <div class="bar" style="--c:#A78BFA"><i id="stB" style="width:${Math.min(100,t/sg*100)}%"></i></div>
+  <div class="row"><button class="btn" data-a="timer" data-k="st">${S.t.st?'Pause':(t>0?'Resume':'Start')}</button></div></div>`}
+
+const COLORS=['#22D3EE','#F97316','#4ADE80','#F472B6','#FACC15'];
+function vSettings(){const s=S.set,p=S.profile;
+  return `<h2>Settings</h2><p class="sub">Change anything here. Saved automatically.</p>
+  <div class="card"><b>Profile</b>
+  <label>Name</label><input data-p="name" value="${esc(p.name)}">
+  <div class="g2"><div><label>Age</label><input data-p="age" type="number" value="${esc(p.age)}"></div><div><label>Height (cm)</label><input data-p="height" type="number" value="${esc(p.height)}"></div></div>
+  <label>Weight (kg)</label><input data-p="weight" type="number" value="${esc(p.weight)}"></div>
+  <div class="card" style="--c:#F97316"><b>Workout</b><label>Daily goal (minutes)</label><input data-k="exMin" type="number" value="${s.exMin}">
+  <label>Bonus quests (one per line: Name | XP)</label><textarea data-k="bonus">${esc(s.bonus)}</textarea></div>
+  <div class="card" style="--c:#22D3EE"><b>Water</b><div class="g2"><div><label>Daily goal (ml)</label><input data-k="waterGoal" type="number" value="${s.waterGoal}"></div><div><label>Per tap (ml)</label><input data-k="waterStep" type="number" value="${s.waterStep}"></div></div>
+  <label>Remind every (minutes)</label><input data-k="waterEvery" type="number" value="${s.waterEvery}"></div>
+  <div class="card" style="--c:#A78BFA"><b>Study</b><label>Daily goal (hours)</label><input data-k="studyHr" type="number" step="0.5" value="${s.studyHr}"></div>
+  <div class="card" style="--c:#F472B6"><b>Alarms</b><div class="g2"><div><label>Wake up</label><input data-k="wake" type="time" value="${s.wake}"></div><div><label>Sleep</label><input data-k="sleep" type="time" value="${s.sleep}"></div></div>
+  <label><input type="checkbox" data-k="sound" ${s.sound?'checked':''} style="width:auto"> Alarm sound</label>
+  <div class="row"><button class="btn ghost" data-a="testalarm">Test alarm</button><button class="btn ghost" data-a="notif">Allow notifications</button></div></div>
+  <div class="card"><b>Theme color</b><div class="sw">${COLORS.map(c=>`<b data-a="accent" data-v="${c}" class="${s.accent===c?'on':''}" style="background:${c}"></b>`).join('')}</div></div>
+  ${LN()?'<div class="sub">Alarms and water reminders work even when the app is closed.</div>':'<div class="warn">Web version: alarms ring only while this page is open. Install the APK for background alarms.</div>'}
+  <div class="row"><button class="btn ghost" data-a="reset" style="color:#F87171">Reset all data</button></div>`}
+
+function render(){
+  if(!S.profile){$('#app').innerHTML=vLogin();return}
+  const v=S.view;const body={home:vHome,exercise:vExercise,water:vWater,study:vStudy,settings:vSettings}[v]();
+  $('#app').innerHTML=body+`<nav>${NAV.map(n=>`<button class="${v===n[0]?'on':''}" data-a="go" data-v="${n[0]}"><span>${n[1]}</span>${n[2]}</button>`).join('')}</nav>`;
+}
+
+document.addEventListener('click',e=>{
+  if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)()}catch(x){}}
+  const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,v=el.dataset.v;
+  if(a==='go'){S.view=v;save();render();window.scrollTo(0,0)}
+  else if(a==='login'){const g=k=>document.querySelector('[data-p='+k+']').value.trim();
+    if(!g('name')){toast('Enter your name');return}
+    S.profile={name:g('name'),age:g('age'),height:g('height'),weight:g('weight')};S.set.studyHr=parseFloat(g('study'))||2;S.view='home';save();render();scheduleNative()}
+  else if(a==='timer'){const k=el.dataset.k;if(S.t[k])bank(k);else S.t[k]=Date.now();save();render()}
+  else if(a==='exfinish'){bank('ex');S.day.exSec=Math.max(S.day.exSec,S.set.exMin*60);save();checkDone();render()}
+  else if(a==='exmin'){S.set.exMin=+v;save();render()}
+  else if(a==='bonus'){const i=+el.dataset.i;if(!S.day.bonus.includes(i)){S.day.bonus.push(i);save();addXP(bonuses()[i].x);render()}}
+  else if(a==='water'){logWater(+v)}
+  else if(a==='watercustom'){const n=parseInt($('#wc').value);if(n>0)logWater(n);else toast('Enter ml')}
+  else if(a==='accent'){S.set.accent=v;save();applyAccent();render()}
+  else if(a==='testalarm'){ring('Test alarm','This is how your alarm looks and sounds','Stop',null)}
+  else if(a==='notif'){if(LN()){scheduleNative();toast('Alarms scheduled')}else{try{Notification.requestPermission().then(r=>toast('Notifications: '+r))}catch(x){toast('Not supported here')}}}
+  else if(a==='reset'){if(confirm('Delete all data and start over?')){localStorage.removeItem(KEY);S=fresh();applyAccent();render()}}
+  else if(a==='ringok'){const f=ring.fn;closeRing();if(f)f()}
+  else if(a==='ringclose'){closeRing()}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.p&&S.profile){S.profile[t.dataset.p]=t.value;save()}
+  else if(t.dataset.k){const k=t.dataset.k;let v=t.type==='checkbox'?t.checked:(t.type==='number'?parseFloat(t.value):t.value);
+    if(t.type==='number'&&!(v>0))return;S.set[k]=v;if(k==='waterEvery')S.nextWater=0;save();scheduleNative()}
+});
+const LN=()=>window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.LocalNotifications;
+async function scheduleNative(){
+  const ln=LN();if(!ln||!S.profile)return;
+  try{
+    await ln.requestPermissions();
+    try{await ln.createChannel({id:'fq',name:'FitQuest reminders',importance:5,vibration:true,visibility:1})}catch(e){}
+    const pend=await ln.getPending();
+    if(pend.notifications.length)await ln.cancel({notifications:pend.notifications.map(n=>({id:n.id}))});
+    const[wh,wm]=S.set.wake.split(':').map(Number),[sh,sm]=S.set.sleep.split(':').map(Number);
+    const at=(h,m)=>({on:{hour:h,minute:m},allowWhileIdle:true});
+    const list=[{id:1,title:'Wake up!',body:'New day, new quest',schedule:at(wh,wm),channelId:'fq'},{id:2,title:'Sleep time',body:'Put the phone down and rest',schedule:at(sh,sm),channelId:'fq'}];
+    let t=wh*60+wm+S.set.waterEvery,id=100;const end=sh*60+sm;
+    while(t<end&&id<160){list.push({id:id++,title:'Drink water',body:'Have '+S.set.waterStep+' ml',schedule:at(Math.floor(t/60),t%60),channelId:'fq'});t+=S.set.waterEvery}
+    await ln.schedule({notifications:list});
+  }catch(e){}
+}
+applyAccent();render();setInterval(tick,1000);scheduleNative();
+</script>
+</body>
+</html>
